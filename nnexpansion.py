@@ -117,6 +117,36 @@ def verify_expansion(model, monoms, C, test_inputs=None, tolerance=1e-6):
     return max_diff < tolerance
 
 
+def compute_class_differences(C, gold_class):
+    """
+    Compute coefficient differences C[i,:] - C[j,:] for all j != i.
+    
+    Args:
+        C: Coefficient matrix of shape (K, num_monomials) where K is number of classes
+        gold_class: Index of the gold/true class (0-indexed)
+    
+    Returns:
+        differences: Array of shape (K-1, num_monomials) containing C[i,:] - C[j,:]
+                    for all j != i, where i is the gold_class
+    """
+    K, num_monomials = C.shape
+    
+    if gold_class < 0 or gold_class >= K:
+        raise ValueError(f"gold_class must be between 0 and {K-1}, got {gold_class}")
+    
+    # Get coefficients for the gold class
+    gold_coeffs = C[gold_class, :]
+    
+    # Compute differences for all other classes
+    differences = []
+    for j in range(K):
+        if j != gold_class:
+            diff = gold_coeffs - C[j, :]
+            differences.append(diff)
+    
+    return np.array(differences)
+
+
 if __name__ == "__main__":
     model = model.PolynomialNetwork(
         input_dim=2, output_dim=2, hidden_dims=[3, 4], polynomial_degree=2
