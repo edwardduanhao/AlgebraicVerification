@@ -111,7 +111,7 @@ def visualize_decision_boundary(model, X, y, x_range=(-2*np.pi, 2*np.pi), y_rang
     Z = predictions.numpy().reshape(X_grid.shape)
     
     # Plot decision boundary as contour
-    plt.contour(X_grid, Y_grid, Z, levels=[0.5], colors='red', linewidths=2, label='Learned Boundary')
+    plt.contour(X_grid, Y_grid, Z, levels=[0.5], colors='red', linewidths=2)
     plt.contourf(X_grid, Y_grid, Z, levels=50, alpha=0.3, cmap='RdYlBu')
     
     # Plot true sin(x) boundary
@@ -143,7 +143,7 @@ def main():
     
     # Generate training data
     print("Generating training data with sin(x) decision boundary...")
-    X_train, y_train = generate_sin_boundary_data(n_samples=2000, noise_level=0.15)
+    X_train, y_train = generate_sin_boundary_data(n_samples=2000, noise_level=0.1)
     
     print(f"Training data shape: {X_train.shape}")
     print(f"Labels shape: {y_train.shape}")
@@ -165,7 +165,7 @@ def main():
     
     # Train the model
     print("\nTraining the model...")
-    losses = train_model(model, X_train, y_train, epochs=1000, lr=1e-3)
+    losses = train_model(model, X_train, y_train, epochs=3000, lr=1e-3)
     
     # Plot training loss
     plt.figure(figsize=(10, 6))
