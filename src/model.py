@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import torch.nn.functional as F
 
 
@@ -52,3 +53,47 @@ class PolynomialNetwork(nn.Module):
             x = self.activations[i](x)
         x = self.layers[-1](x)
         return x
+
+
+def train_model(model, X_train, y_train, epochs=1000, lr=0.01):
+    """
+    Train the polynomial network for binary classification.
+
+    Args:
+        model: PolynomialNetwork instance
+        X_train: Training features
+        y_train: Training labels
+        epochs: Number of training epochs
+        lr: Learning rate
+
+    Returns:
+        losses: List of training losses
+    """
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+
+    losses = []
+    accuracies = []
+
+    for epoch in range(epochs):
+        optimizer.zero_grad()
+
+        # Forward pass
+        outputs = model(X_train)
+        loss = criterion(outputs, y_train)
+
+        # Backward pass
+        loss.backward()
+        optimizer.step()
+
+        losses.append(loss.item())
+        _, predicted = torch.max(outputs.data, 1)
+        accuracy = (predicted == y_train).float().mean().item()
+        accuracies.append(accuracy)
+
+        if (epoch + 1) % 500 == 0:
+            print(
+                f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}, Accuracy: {accuracy:.4f}"
+            )
+
+    return losses, accuracies
