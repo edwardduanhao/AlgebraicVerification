@@ -1,10 +1,12 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from decimal import Decimal
 
 
 def generate_sin_boundary_data(
-    n_samples=1000, noise_level=0.1, x_range=(-2 * np.pi, 2 * np.pi)
+    n_samples=1000, noise_level=0.1, x_range=(-2 * np.pi, 2 * np.pi), seed=42
 ):
     """
     Generate binary classification data with sin(x) decision boundary.
@@ -18,6 +20,9 @@ def generate_sin_boundary_data(
         X: Input features of shape (n_samples, 2)
         y: Binary labels of shape (n_samples,)
     """
+
+    np.random.seed(seed)
+
     # Generate random x values
     x = np.random.uniform(x_range[0], x_range[1], n_samples)
 
@@ -37,6 +42,62 @@ def generate_sin_boundary_data(
     # Stack features
     X = np.stack([x, y], axis=1).astype(np.float32)
 
+    # Separate the data points by class
+    mask_class0 = labels == 0
+    mask_class1 = labels == 1
+
+    X_class0 = X[mask_class0]
+    X_class1 = X[mask_class1]
+
+    fig = go.Figure()
+
+    # Add data points for class 0
+    fig.add_trace(
+        go.Scatter(
+            x=X_class0[:, 0],
+            y=X_class0[:, 1],
+            mode="markers",
+            marker=dict(color="blue", size=5, opacity=0.7),
+            name="Class 0",
+        )
+    )
+
+    # Add data points for class 1
+    fig.add_trace(
+        go.Scatter(
+            x=X_class1[:, 0],
+            y=X_class1[:, 1],
+            mode="markers",
+            marker=dict(color="red", size=5, opacity=0.7),
+            name="Class 1",
+        )
+    )
+
+    # Add true decision boundary
+    x_true = np.linspace(x_range[0], x_range[1], 1000)
+    y_true = np.sin(x_true)
+    fig.add_trace(
+        go.Scatter(
+            x=x_true,
+            y=y_true,
+            mode="lines",
+            line=dict(color="green", width=3),
+            name="True sin(x) Boundary",
+        )
+    )
+    fig.update_layout(
+        margin=dict(l=10, r=10, t=10, b=10),
+        xaxis_title="x0",
+        yaxis_title="x1",
+        showlegend=True,
+        xaxis=dict(showgrid=False, zeroline=False),
+        yaxis=dict(showgrid=False, zeroline=False),
+        width=800,
+        height=600,
+    )
+    fig.show()
+    fig.write_image("../figures/training_data.pdf", width=800, height=600, scale=2)
+
     return torch.tensor(X), torch.tensor(labels)
 
 
@@ -53,9 +114,8 @@ def visualize_decision_boundary(
         x_range: Range for x-axis
         y_range: Range for y-axis
     """
-    plt.figure(figsize=(10, 7))
-
     # Create a grid for plotting decision boundary
+
     x_grid = np.linspace(x_range[0], x_range[1], 200)
     y_grid = np.linspace(y_range[0], y_range[1], 200)
     X_grid, Y_grid = np.meshgrid(x_grid, y_grid)
@@ -74,29 +134,70 @@ def visualize_decision_boundary(
     # Reshape predictions back to grid
     Z = predictions.numpy().reshape(X_grid.shape)
 
-    # Plot decision boundary as contour
-    plt.contour(X_grid, Y_grid, Z, levels=[0.5], colors="red", linewidths=2)
-    plt.contourf(X_grid, Y_grid, Z, levels=50, alpha=0.3, cmap="RdYlBu")
+    fig = go.Figure()
+    fig.add_trace(
+        go.Heatmap(
+            x=x_grid,
+            y=y_grid,
+            z=Z,
+            colorscale=[
+                [0.0, "rgb(100, 149, 237)"],
+                [0.5, "rgb(255, 255, 255)"],
+                [1.0, "rgb(255, 102, 102)"],
+            ],
+            opacity=0.8,
+            showscale=True,
+            colorbar=dict(title="P(y=1)"),
+            zsmooth="best",
+        )
+    )
 
-    # Plot true sin(x) boundary
-    x_true = np.linspace(x_range[0], x_range[1], 1000)
-    y_true = np.sin(x_true)
-    plt.plot(x_true, y_true, "g--", linewidth=2, label="True sin(x) Boundary")
+    # Add training data points
+    fig.add_trace(
+        go.Scatter(
+            x=X[y == 0][:, 0].numpy(),
+            y=X[y == 0][:, 1].numpy(),
+            mode="markers",
+            name="Class 0",
+            marker=dict(color="blue", size=5, opacity=0.6),
+        )
+    )
 
-    # Plot training data
-    X_np = X.numpy()
-    y_np = y.numpy()
-    colors = ["blue" if label == 0 else "orange" for label in y_np]
-    plt.scatter(X_np[:, 0], X_np[:, 1], c=colors, alpha=0.6, s=20)
+    fig.add_trace(
+        go.Scatter(
+            x=X[y == 1][:, 0].numpy(),
+            y=X[y == 1][:, 1].numpy(),
+            mode="markers",
+            name="Class 1",
+            marker=dict(color="red", size=5, opacity=0.6),
+        )
+    )
 
-    plt.xlim(x_range)
-    plt.ylim(y_range)
-    plt.xlabel("x1")
-    plt.ylabel("x2")
-    plt.title("Polynomial Network Decision Boundary vs True sin(x) Boundary")
-    plt.legend()
-    plt.colorbar(label="Prediction Probability", cmap="RdYlBu")
-    plt.show()
+    fig.update_layout(
+        margin=dict(l=10, r=10, t=10, b=10),
+        legend=dict(
+            x=0.02,
+            y=0.98,
+            xanchor="left",
+            yanchor="top",
+            bgcolor="rgba(255,255,255,0.6)",
+        ),
+        xaxis_title="x0",
+        yaxis_title="x1",
+        showlegend=True,
+        xaxis=dict(showgrid=False, zeroline=False),
+        yaxis=dict(showgrid=False, zeroline=False),
+        width=800,
+        height=800,
+    )
+
+    fig.update_traces(
+        selector=dict(type="heatmap"),
+        colorbar=dict(title="P(y=1)"),
+    )
+
+    fig.show()
+    fig.write_image("../figures/decision_boundary.pdf", width=800, height=800, scale=2)
 
 
 def coeffs_to_phcpy_string(
@@ -127,6 +228,7 @@ def coeffs_to_phcpy_string(
         >>> coeffs_to_phcpy_string(coeffs, monoms)
         '1.0 - x0**2 + 2.0*x0*x1'
     """
+
     if len(coefficients) != len(monomial_degrees):
         raise ValueError("Length of coefficients must match length of monomial_degrees")
 
@@ -139,6 +241,7 @@ def coeffs_to_phcpy_string(
     # Set default variable names if not provided
     if variable_names is None:
         variable_names = [f"x{i}" for i in range(num_vars)]
+        print(variable_names)
     elif len(variable_names) != num_vars:
         raise ValueError(
             f"Expected {num_vars} variable names, got {len(variable_names)}"
@@ -147,7 +250,7 @@ def coeffs_to_phcpy_string(
     terms = []
 
     for coeff, degrees in zip(coefficients, monomial_degrees):
-        coeff_val = float(coeff)
+        coeff_val = Decimal(coeff)
 
         # Skip negligible coefficients
         if abs(coeff_val) < tolerance:
@@ -170,9 +273,9 @@ def coeffs_to_phcpy_string(
 
         # Build the term string with coefficient
         if monomial_str:  # Non-constant term
-            if abs(coeff_val - 1.0) < tolerance:  # Coefficient is +1
+            if abs(coeff_val - Decimal("1.0")) < tolerance:  # Coefficient is +1
                 term_str = monomial_str
-            elif abs(coeff_val + 1.0) < tolerance:  # Coefficient is -1
+            elif abs(coeff_val + Decimal("1.0")) < tolerance:  # Coefficient is -1
                 term_str = f"-{monomial_str}"
             else:  # General coefficient
                 if coeff_val > 0:
@@ -269,7 +372,3 @@ def test_phcpy_formatting():
     print(f"Test 3: {result3}")
 
     print("PHCpy formatting tests completed!")
-
-
-if __name__ == "__main__":
-    test_phcpy_formatting()

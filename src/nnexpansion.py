@@ -65,6 +65,111 @@ def polynomial_nn_expansion(model):
 
     end_time = time.perf_counter()
     print(f"Polynomial expansion took {end_time - start_time:.4f} seconds.")
+    return y_list, monoms, C
+
+
+def polynomial_nn_expansion_symbolic(model, verbose=True):
+    """Convert a PyTorch neural network with polynomial activations into polynomials."""
+    start_time = time.perf_counter()
+    input_dim = model.input_dim
+    x_syms = sp.symbols(f"x0:{input_dim}")
+    x = sp.Matrix(x_syms)
+    if verbose:
+        print(f"Input symbols: {x_syms}")
+
+    W_syms = []
+    b_syms = []
+    c_syms = []
+
+    # Forward pass through layers
+    for l, layer in enumerate(model.layers):
+        input_dim = layer.in_features
+        output_dim = layer.out_features
+
+        # Weights
+        W = sp.Matrix(
+            [
+                [sp.symbols(f"W{l}_{i}_{j}") for j in range(input_dim)]
+                for i in range(output_dim)
+            ]
+        )
+        W_syms.append(W)
+        if verbose:
+            print(f"Layer {l} weight: {W.shape}")
+
+        # Biases
+        b = sp.Matrix([sp.symbols(f"b{l}_{i}") for i in range(output_dim)])
+        b_syms.append(b)
+        if verbose:
+            print(f"Layer {l} bias: {b.shape}")
+
+        # Activation coefficients
+        if l < len(model.layers) - 1:
+            c = sp.Matrix(
+                [sp.symbols(f"c{l}_{i}") for i in range(model.polynomial_degree + 1)]
+            )
+            c_syms.append(c)
+            if verbose:
+                print(f"Layer {l} activation: {tuple(c.shape)}")
+
+    h = x
+
+    for l, (W, b) in enumerate(zip(W_syms, b_syms)):
+        h = W * h + b
+        if l < len(model.layers) - 1:
+            c = c_syms[l]
+            h = h.applyfunc(lambda z: sum(c[d] * z**d for d in range(len(c))))
+
+    y = h
+    y_expr = [sp.expand(expr) for expr in y]
+    polys = [sp.Poly(expr, *x_syms) for expr in y_expr]
+    all_monoms = set().union(*[set(P.monoms()) for P in polys])
+
+    monoms = sorted(all_monoms, key=lambda a: (sum(a),) + tuple(a))
+
+    coeffs = [[] for _ in range(len(polys))]
+
+    for j, P in enumerate(polys):
+        term_dict = dict(P.terms())
+        for a in monoms:
+            coeffs[j].append(term_dict.get(a, 0))
+
+    param_syms = []
+    for l, W in enumerate(W_syms):
+        W.rows, W.cols = W.shape
+        for i in range(W.rows):
+            for j in range(W.cols):
+                param_syms.append(W[i, j])
+    for l, b in enumerate(b_syms):
+        b.rows, _ = b.shape
+        for i in range(b.rows):
+            param_syms.append(b[i, 0])
+    for l, c in enumerate(c_syms):
+        c.rows, _ = c.shape
+        for i in range(c.rows):
+            param_syms.append(c[i, 0])
+
+    end_time = time.perf_counter()
+    if verbose:
+        print(f"Polynomial expansion took {end_time - start_time:.4f} seconds.")
+
+    params = []
+
+    for layer in model.layers:
+        params += torch.split(layer.weight.detach().cpu().flatten(), 1)
+
+    for layer in model.layers:
+        params += torch.split(layer.bias.detach().cpu(), 1)
+
+    for c in model.activations:
+        params += torch.split(c.coefficients.detach().cpu(), 1)
+
+    coeff_func = sp.lambdify(param_syms, coeffs, modules="torch")
+    coeff_vals = coeff_func(*params)
+
+    C = [elem for row in coeff_vals for elem in row]
+    C = torch.stack(C).reshape(len(coeff_vals), -1)
+
     return monoms, C
 
 

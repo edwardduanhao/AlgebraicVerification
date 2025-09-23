@@ -2,6 +2,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+import numpy as np
+from tqdm.auto import tqdm, trange
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
 class PolynomialActivation(nn.Module):
@@ -75,7 +79,8 @@ def train_model(model, X_train, y_train, epochs=1000, lr=0.01):
     losses = []
     accuracies = []
 
-    for epoch in range(epochs):
+    pbar = trange(epochs, desc="Training Progress")
+    for epoch in pbar:
         optimizer.zero_grad()
 
         # Forward pass
@@ -86,14 +91,72 @@ def train_model(model, X_train, y_train, epochs=1000, lr=0.01):
         loss.backward()
         optimizer.step()
 
-        losses.append(loss.item())
+        # Calculate accuracy
         _, predicted = torch.max(outputs.data, 1)
         accuracy = (predicted == y_train).float().mean().item()
+
+        losses.append(loss.item())
         accuracies.append(accuracy)
 
-        if (epoch + 1) % 500 == 0:
-            print(
-                f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}, Accuracy: {accuracy:.4f}"
-            )
+        # Update progress bar with current loss and accuracy
+        pbar.set_postfix({"loss": f"{loss.item():.4f}", "accuracy": f"{accuracy:.4f}"})
+
+    # losses, accuracies are 1D iterables of equal length
+    epochs = np.arange(1, len(losses) + 1)
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])  # enables right y-axis
+
+    # Left y-axis: Loss
+    fig.add_trace(
+        go.Scatter(
+            x=epochs,
+            y=losses,
+            name="Loss",
+            mode="lines",
+            line=dict(width=2, color="#1f77b4"),
+        ),
+        secondary_y=False,
+    )
+
+    # Right y-axis: Accuracy
+    fig.add_trace(
+        go.Scatter(
+            x=epochs,
+            y=accuracies,
+            name="Accuracy",
+            mode="lines",
+            line=dict(width=2, color="#ff7f0e"),
+        ),
+        secondary_y=True,
+    )
+
+    # Axis titles, colors, ranges
+    fig.update_xaxes(title_text="Epoch")
+    fig.update_yaxes(title_text="Training Loss", color="#1f77b4", secondary_y=False)
+    fig.update_yaxes(
+        title_text="Training Accuracy",
+        color="#ff7f0e",
+        secondary_y=True,
+    )
+
+    # Layout (size, legend, hover, margins)
+    fig.update_layout(
+        title="Training Loss and Accuracy",
+        width=800,
+        height=600,
+        hovermode="x unified",
+        legend=dict(x=0.02, y=0.98, bgcolor="rgba(0,0,0,0)"),
+        margin=dict(l=60, r=60, t=60, b=40),
+        xaxis=dict(showgrid=False, zeroline=False),
+        yaxis=dict(showgrid=False, zeroline=False),
+    )
+
+    fig.update_yaxes(
+        title_text="Training Accuracy",
+        color="#ff7f0e",
+        autorange=True,
+        secondary_y=True,
+    )
+    fig.show()
 
     return losses, accuracies
