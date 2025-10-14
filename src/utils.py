@@ -96,7 +96,7 @@ def generate_sin_boundary_data(
         height=600,
     )
     fig.show()
-    fig.write_image("../figures/training_data.pdf", width=800, height=600, scale=2)
+    # fig.write_image("../figures/training_data.pdf", width=800, height=600, scale=2)
 
     return torch.tensor(X), torch.tensor(labels)
 
@@ -197,7 +197,7 @@ def visualize_decision_boundary(
     )
 
     fig.show()
-    fig.write_image("../figures/decision_boundary.pdf", width=800, height=800, scale=2)
+    # fig.write_image("../figures/decision_boundary.pdf", width=800, height=800, scale=2)
 
 
 def coeffs_to_phcpy_string(

@@ -160,3 +160,48 @@ def train_model(model, X_train, y_train, epochs=1000, lr=0.01):
     fig.show()
 
     return losses, accuracies
+
+
+class LinearSelfAttention(nn.Module):
+    """
+    A simple (single-head) self-attention block:
+    - Input shape: (batch_size, embed_dim, seq_len)
+    - Output shape: (batch_size, embed_dim, seq_len)
+    """
+
+    def __init__(self, embed_dim):
+        super(LinearSelfAttention, self).__init__()
+        self.embed_dim = embed_dim
+
+        # Define query, key, value linear layers
+        self.query = nn.Linear(embed_dim, embed_dim)
+        self.key = nn.Linear(embed_dim, embed_dim)
+        self.value = nn.Linear(embed_dim, embed_dim)
+
+    def forward(self, x):
+        """
+        x has shape [batch_size, embed_dim, seq_len].
+        We'll transform x so we treat each position in the seq_len dimension
+        as a 'token' with an embedding dimension of embed_dim.
+        """
+        batch_size, embed_dim, seq_len = x.shape
+
+        # Transpose to (batch_size, seq_len, embed_dim) for linear layers
+        x_t = x.transpose(1, 2)  # [batch_size, seq_len, embed_dim]
+
+        # Compute Q, K, V
+        Q = self.query(x_t)  # [batch_size, seq_len, embed_dim]
+        K = self.key(x_t)  # [batch_size, seq_len, embed_dim]
+        V = self.value(x_t)  # [batch_size, seq_len, embed_dim]
+
+        # Compute scaled dot-product attention
+        # QK^T shape: [batch_size, seq_len, seq_len]
+        scores = torch.matmul(Q, K.transpose(1, 2))
+
+        # Multiply attention weights by V
+        out = torch.matmul(scores, V)  # [batch_size, seq_len, embed_dim]
+
+        # Reshape back to (batch_size, embed_dim, seq_len)
+        out = out.transpose(1, 2)
+
+        return out
