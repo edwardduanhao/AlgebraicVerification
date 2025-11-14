@@ -1,8 +1,11 @@
 import math
 import torch
 import torch.nn as nn
+from typing import TYPE_CHECKING
 
-from pnn import PolynomialActivation, PolynomialNeuralNetwork
+if TYPE_CHECKING:
+    from pnn import PolynomialActivation, PolynomialNeuralNetwork
+    from src.config.config import ModelConfig
 
 
 def c_split(z: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -145,7 +148,7 @@ class ComplexPolynomialActivation(nn.Module):
 
     @classmethod
     def from_polynomial_activation(
-        cls, poly: PolynomialActivation
+        cls, poly: "PolynomialActivation"
     ) -> "ComplexPolynomialActivation":
         """
         Create a ComplexPolynomialActivation from a real PolynomialActivation.
@@ -250,7 +253,7 @@ class ComplexPolynomialNeuralNetwork(nn.Module):
 
     @classmethod
     def from_polynomial_neural_network(
-        cls, model: PolynomialNeuralNetwork
+        cls, model: "PolynomialNeuralNetwork"
     ) -> "ComplexPolynomialNeuralNetwork":
         """
         Convert an instance of PolynomialNeuralNetwork into an instance of ComplexPolynomialNeuralNetwork.
@@ -283,6 +286,27 @@ class ComplexPolynomialNeuralNetwork(nn.Module):
                 )
 
         return c_model
+
+    @classmethod
+    def from_config(cls, config: "ModelConfig") -> "ComplexPolynomialNeuralNetwork":
+        """
+        Create a ComplexPolynomialNeuralNetwork from a ModelConfig.
+
+        Args:
+            config (ModelConfig): Configuration object containing model parameters.
+
+        Returns:
+            ComplexPolynomialNeuralNetwork: Instantiated model from config.
+        """
+        return cls(
+            input_dim=config.input_dim,
+            output_dim=config.output_dim,
+            hidden_dims=config.hidden_dims,
+            degree=config.degree,
+            homogeneous=config.homogeneous,
+            bias=config.bias,
+            s=config.s,
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         for i, layer in enumerate(self.layers[:-1]):

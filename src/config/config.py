@@ -7,10 +7,10 @@ from typing import Literal
 class ModelConfig:
     """Configuration for Polynomial Neural Network."""
 
-    input_dim: int = 10
+    input_dim: int = 4
     output_dim: int = 2
-    hidden_dims: list[int] = field(default_factory=lambda: [64, 32])
-    degree: int = 2
+    hidden_dims: list[int] = field(default_factory=lambda: [8, 8])
+    degree: int = 3
     homogeneous: bool = False
     bias: bool = True
     s: float = 1.0

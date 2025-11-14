@@ -1,5 +1,9 @@
 import torch
 import torch.nn as nn
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.config.config import ModelConfig
 
 
 class PolynomialActivation(nn.Module):
@@ -93,6 +97,27 @@ class PolynomialNeuralNetwork(nn.Module):
 
         self.layers = nn.ModuleList(layers)
         self.activations = nn.ModuleList(activations)
+
+    @classmethod
+    def from_config(cls, config: "ModelConfig") -> "PolynomialNeuralNetwork":
+        """
+        Create a PolynomialNeuralNetwork from a ModelConfig.
+
+        Args:
+            config (ModelConfig): Configuration object containing model parameters.
+
+        Returns:
+            PolynomialNeuralNetwork: Instantiated model from config.
+        """
+        return cls(
+            input_dim=config.input_dim,
+            output_dim=config.output_dim,
+            hidden_dims=config.hidden_dims,
+            degree=config.degree,
+            homogeneous=config.homogeneous,
+            bias=config.bias,
+            s=config.s,
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         for i, layer in enumerate(self.layers[:-1]):

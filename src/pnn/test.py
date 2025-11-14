@@ -1,7 +1,11 @@
 import torch
-from pnn import PolynomialNeuralNetwork
-from cpnn import ComplexPolynomialNeuralNetwork, c_split, c_join
-
+from src.pnn import (
+    PolynomialNeuralNetwork,
+    ComplexPolynomialNeuralNetwork,
+    c_split,
+    c_join,
+)
+from src.config import Config
 
 if __name__ == "__main__":
     # Create a sample PolynomialNeuralNetwork
@@ -15,11 +19,13 @@ if __name__ == "__main__":
         s=1.0,
     )
 
+    # config = Config()
+    # pnn = PolynomialNeuralNetwork.from_config(config.model)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pnn = pnn.double().to(device)
 
     # Convert to ComplexPolynomialNeuralNetwork
-    # After the fix, this now preserves dtype and device from pnn
     cpnn = ComplexPolynomialNeuralNetwork.from_polynomial_neural_network(pnn)
 
     # Verify dtypes are preserved
