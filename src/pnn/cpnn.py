@@ -2,46 +2,11 @@ import math
 import torch
 import torch.nn as nn
 from typing import TYPE_CHECKING
+from src.utils import c_join, c_split
 
 if TYPE_CHECKING:
     from pnn import PolynomialActivation, PolynomialNeuralNetwork
     from src.config.config import ModelConfig
-
-
-def c_split(z: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    """
-    Split the last dimension of z into real and imaginary parts.
-
-    Args:
-        z (torch.Tensor): Input tensor with last dimension of size 2d.
-
-    Returns:
-        tuple[torch.Tensor, torch.Tensor]: Two tensors representing the real and imaginary parts.
-    """
-
-    if z.shape[-1] % 2 != 0:
-        raise ValueError(
-            "Last dimension must be even to split real and imaginary parts."
-        )
-
-    d = z.shape[-1] // 2
-
-    return z[..., :d], z[..., d:]
-
-
-def c_join(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    """
-    Join real and imaginary parts into a single stacked tensor.
-
-    Args:
-        x (torch.Tensor): Real part, dimension (..., d)
-        y (torch.Tensor): Imaginary part, dimension (..., d)
-
-    Returns:
-        torch.Tensor: Stacked tensor with last dimension of size 2d.
-    """
-
-    return torch.cat([x, y], dim=-1)
 
 
 class ComplexLinear(nn.Module):

@@ -9,32 +9,32 @@ if TYPE_CHECKING:
 class PolynomialActivation(nn.Module):
     """Polynomial Activation Function Module."""
 
-    def __init__(self, degree: int, homogeneous: bool, s: float):
+    def __init__(self, act_degree: int, homogeneous: bool, s: float):
         """
 
         Args:
-            degree (int): Degree of the polynomial activation function.
+            act_degree (int): Degree of the polynomial activation function.
             homogeneous (bool): Whether the activation function is homogeneous.
                 If True, the activation function will be of the form f(x) = c * x^degree.
             s (float): Scaling factor for the initial coefficients.
         """
         super().__init__()
 
-        self.degree = degree
+        self.act_degree = act_degree
         self.homogeneous = homogeneous
         self.s = s
 
-        if degree <= 0:
-            raise ValueError(f"degree must be positive, got {degree}")
+        if act_degree <= 0:
+            raise ValueError(f"act_degree must be positive, got {act_degree}")
 
         if self.homogeneous:
             self.coeffs = nn.Parameter(torch.randn(1) * s)
         else:
-            self.coeffs = nn.Parameter(torch.randn(degree + 1) * s)
+            self.coeffs = nn.Parameter(torch.randn(act_degree + 1) * s)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.homogeneous:
-            return self.coeffs * torch.pow(x, self.degree)
+            return self.coeffs * torch.pow(x, self.act_degree)
         else:
             # Apply Horner's method for efficient polynomial evaluation
             y = torch.zeros_like(x) + self.coeffs[-1]
@@ -49,7 +49,7 @@ class PolynomialNeuralNetwork(nn.Module):
         input_dim: int,
         output_dim: int,
         hidden_dims: list[int],
-        degree: int,
+        act_degree: int,
         homogeneous: bool = False,
         bias: bool = True,
         s: float = 1.0,
@@ -60,7 +60,7 @@ class PolynomialNeuralNetwork(nn.Module):
             input_dim (int): Input dimension.
             output_dim (int): Output dimension.
             hidden_dims (list[int]): Hidden dimensions.
-            degree (int): Degree of the polynomial activation function.
+            act_degree (int): Degree of the polynomial activation function.
             homogeneous (bool, optional): Whether the activation function is homogeneous. Defaults to False.
             bias (bool, optional): Whether to include bias terms. Defaults to True.
             s (float, optional): Scaling factor for the initial coefficients. Defaults to 1.0.
@@ -76,7 +76,7 @@ class PolynomialNeuralNetwork(nn.Module):
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.hidden_dims = hidden_dims
-        self.degree = degree
+        self.act_degree = act_degree
         self.homogeneous = homogeneous
         self.bias = bias
         self.s = s
@@ -92,7 +92,9 @@ class PolynomialNeuralNetwork(nn.Module):
             )
             if i < len(dims) - 2:
                 activations.append(
-                    PolynomialActivation(degree=degree, homogeneous=homogeneous, s=s)
+                    PolynomialActivation(
+                        act_degree=act_degree, homogeneous=homogeneous, s=s
+                    )
                 )
 
         self.layers = nn.ModuleList(layers)
@@ -113,7 +115,7 @@ class PolynomialNeuralNetwork(nn.Module):
             input_dim=config.input_dim,
             output_dim=config.output_dim,
             hidden_dims=config.hidden_dims,
-            degree=config.degree,
+            act_degree=config.act_degree,
             homogeneous=config.homogeneous,
             bias=config.bias,
             s=config.s,
@@ -125,3 +127,24 @@ class PolynomialNeuralNetwork(nn.Module):
             x = self.activations[i](x)
         x = self.layers[-1](x)
         return x
+
+
+if __name__ == "__main__":
+    # Example usage
+    model = PolynomialNeuralNetwork(
+        input_dim=4,
+        output_dim=2,
+        hidden_dims=[8, 8],
+        act_degree=3,
+        homogeneous=False,
+        bias=True,
+        s=0.1,
+    )
+
+    # Print model architecture
+    print(model)
+
+    # Test forward pass
+    x = torch.randn(1, 4)
+    y = model(x)
+    print(y)
