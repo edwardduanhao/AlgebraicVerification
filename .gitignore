@@ -1,37 +1,19 @@
 # Python
-__pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
 
-# Jupyter Notebook
-.ipynb_checkpoints
-*.ipynb_checkpoints/
-
-# Environments
+# Virtual environments
 .env
 .venv
 env/
 venv/
 ENV/
-env.bak/
-venv.bak/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+**/.ipynb_checkpoints/
 
 # IDEs
 .vscode/
@@ -40,12 +22,14 @@ venv.bak/
 *.swo
 *~
 
-# Model files and experiments
+# Experiments and model outputs
 experiments/
-model/
 *.pth
 *.h5
-*.npz
+
+# Data files (if you have large datasets)
+# Uncomment if needed:
+# *.npz
 
 # Julia
 *.jl.cov
