@@ -1,3 +1,10 @@
+"""
+Verification example: Train a Polynomial Neural Network (PNN) on the
+Steiner Roman surface dataset, compute a certified robust radius via
+homotopy continuation, and visualize the decision boundary in 3D.
+Reproduces Figure 1 in the paper.
+"""
+
 import sys, os
 
 # Add the project root directory to the path
@@ -5,32 +12,21 @@ project_root = os.path.abspath("..")
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# IMPORTANT: Import juliacall BEFORE torch to avoid segfaults
+# IMPORTANT: Import juliacall BEFORE torch to avoid segfaults.
+# juliacall is used internally by src.hc for homotopy continuation.
 # See: https://github.com/pytorch/pytorch/issues/78829
 from juliacall import Main as jl
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import TensorDataset, DataLoader
-import matplotlib.pyplot as plt
+from torch.utils.data import DataLoader
 import plotly.graph_objects as go
-from pathlib import Path
 from skimage import measure
 
-import ipdb
-
-from src.data import (
-    FanDataset,
-    SinusoidDataset,
-    YinYangDataset,
-    SteinerRomanDataset,
-    MNISTDataset,
-)
+from src.data import SteinerRomanDataset
 from src.pnn import PolynomialNeuralNetwork
-from src.utils import train_epochs, plot_db, plot_db_3d, save_model
-from src.hc import compute_robust_radius, verify_experiment
+from src.utils import train_epochs, save_model
+from src.hc import compute_robust_radius
 
 
 def make_glossy_surface(verts, faces, x_range, y_range, z_range, grid_size):
@@ -104,16 +100,15 @@ def make_glossy_sphere(center, radius):
 
 
 if __name__ == "__main__":
-    # Create DataLoader for training
+    # ── 1. Data & Model Setup ────────────────────────────────────────────
     train_dataset = SteinerRomanDataset(size=1000)
     train_loader = DataLoader(train_dataset, batch_size=1000)
 
-    # Initialize the Polynomial Neural Network
     model = PolynomialNeuralNetwork(
         input_dim=3, output_dim=2, hidden_dims=[20, 20], act_degree=2
     )
 
-    # Train the model
+    # ── 2. Training ──────────────────────────────────────────────────────
     history = train_epochs(
         model=model,
         train_loader=train_loader,
@@ -123,7 +118,7 @@ if __name__ == "__main__":
         verbose=True,
     )
 
-    # Save the trained model with metadata
+    # ── 3. Save Model ───────────────────────────────────────────────────
     path = save_model(
         model,
         metadata={
@@ -138,6 +133,9 @@ if __name__ == "__main__":
         },
     )
 
+    # ── 4. Robustness Verification ───────────────────────────────────────
+    # Compute the certified robust radius around each query point via
+    # homotopy continuation (solved in Julia through juliacall).
     xi_list = [[0.45, 0.45, 0.45]]
 
     res = compute_robust_radius(
@@ -149,9 +147,13 @@ if __name__ == "__main__":
     )
 
     print(
-        f"The minimum distance is {res['min_dist']}, and the closest solution is {res['closest_sol']}."
+        f"The minimum distance is {res['min_dist']}, "
+        f"and the closest solution is {res['closest_sol']}."
     )
 
+    # ── 5. 3D Decision-Boundary Visualization ─────────────────────────
+    # Evaluate the trained model on a dense 3D grid to extract the
+    # decision boundary as an isosurface (logit_0 - logit_1 = 0).
     model = model.cpu()
     model.double()
 
@@ -160,42 +162,37 @@ if __name__ == "__main__":
     z_range = (-1, 1)
     grid_size = 250
 
-    # Create a 3D grid for plotting decision boundary
     x_grid = np.linspace(x_range[0], x_range[1], grid_size)
     y_grid = np.linspace(y_range[0], y_range[1], grid_size)
     z_grid = np.linspace(z_range[0], z_range[1], grid_size)
     X_grid, Y_grid, Z_grid = np.meshgrid(x_grid, y_grid, z_grid)
 
-    # Flatten grid for prediction
     grid_points = torch.tensor(
         np.c_[X_grid.ravel(), Y_grid.ravel(), Z_grid.ravel()], dtype=torch.float64
     )
 
-    # Get model predictions
     model.eval()
     with torch.no_grad():
         logits = model(grid_points)
-        predictions = torch.argmax(logits, dim=1)
 
-    # Reshape predictions and logits back to grid
-    predictions_grid = predictions.numpy().reshape(X_grid.shape)
     logits_grid = logits.numpy().reshape(X_grid.shape + (logits.shape[1],))
 
-    # Calculate decision boundary (where prediction changes)
-    # For binary classification: logit[0] - logit[1] = 0
+    # Decision boundary: where logit[0] - logit[1] = 0
     decision_values = logits_grid[:, :, :, 0] - logits_grid[:, :, :, 1]
 
-    # Extract the isosurface using marching cubes
+    # Extract the isosurface via marching cubes
     verts, faces, normals, values = measure.marching_cubes(decision_values, level=0)
 
-    # --- Build figure ---
+    # ── 6. Build Plotly Figure ───────────────────────────────────────────
     fig = go.Figure()
 
     fig.add_trace(
         make_glossy_surface(verts, faces, x_range, y_range, z_range, grid_size)
     )
 
+    # Overlay query points and their certified robust-radius spheres
     xi_array = np.array(xi_list)
+
     fig.add_trace(
         go.Scatter3d(
             x=xi_array[:, 0],
