@@ -1,0 +1,105 @@
+{
+  "timestamp": "2026-01-26T14:13:09.259093",
+  "num_configs": 8,
+  "num_epochs": 20000,
+  "lr": 0.001,
+  "base_seed": 42,
+  "results": [
+    {
+      "config": "arch16_12_2_deg2_eps0.2",
+      "output_dir": "/home/hao/Insync/hduan7@PersonalMicrosoftSoftware.ucla.edu/OneDrive Biz/UCLA/Research/AlgebraicVerification/benchmark/results/arch16_12_2_deg2_eps0.2",
+      "evaluation": {
+        "acc_x0_unverifiable": 1.0,
+        "acc_counterexample": 1.0,
+        "acc_x0_clean": 1.0,
+        "n_correct_x0_unv": 10,
+        "n_correct_cex": 10,
+        "n_correct_x0_clean": 10
+      }
+    },
+    {
+      "config": "arch16_12_2_deg2_eps0.5",
+      "output_dir": "/home/hao/Insync/hduan7@PersonalMicrosoftSoftware.ucla.edu/OneDrive Biz/UCLA/Research/AlgebraicVerification/benchmark/results/arch16_12_2_deg2_eps0.5",
+      "evaluation": {
+        "acc_x0_unverifiable": 1.0,
+        "acc_counterexample": 1.0,
+        "acc_x0_clean": 1.0,
+        "n_correct_x0_unv": 10,
+        "n_correct_cex": 10,
+        "n_correct_x0_clean": 10
+      }
+    },
+    {
+      "config": "arch16_12_2_deg3_eps0.2",
+      "output_dir": "/home/hao/Insync/hduan7@PersonalMicrosoftSoftware.ucla.edu/OneDrive Biz/UCLA/Research/AlgebraicVerification/benchmark/results/arch16_12_2_deg3_eps0.2",
+      "evaluation": {
+        "acc_x0_unverifiable": 1.0,
+        "acc_counterexample": 1.0,
+        "acc_x0_clean": 1.0,
+        "n_correct_x0_unv": 10,
+        "n_correct_cex": 10,
+        "n_correct_x0_clean": 10
+      }
+    },
+    {
+      "config": "arch16_12_2_deg3_eps0.5",
+      "output_dir": "/home/hao/Insync/hduan7@PersonalMicrosoftSoftware.ucla.edu/OneDrive Biz/UCLA/Research/AlgebraicVerification/benchmark/results/arch16_12_2_deg3_eps0.5",
+      "evaluation": {
+        "acc_x0_unverifiable": 1.0,
+        "acc_counterexample": 1.0,
+        "acc_x0_clean": 1.0,
+        "n_correct_x0_unv": 10,
+        "n_correct_cex": 10,
+        "n_correct_x0_clean": 10
+      }
+    },
+    {
+      "config": "arch16_20_2_deg2_eps0.2",
+      "output_dir": "/home/hao/Insync/hduan7@PersonalMicrosoftSoftware.ucla.edu/OneDrive Biz/UCLA/Research/AlgebraicVerification/benchmark/results/arch16_20_2_deg2_eps0.2",
+      "evaluation": {
+        "acc_x0_unverifiable": 1.0,
+        "acc_counterexample": 1.0,
+        "acc_x0_clean": 1.0,
+        "n_correct_x0_unv": 10,
+        "n_correct_cex": 10,
+        "n_correct_x0_clean": 10
+      }
+    },
+    {
+      "config": "arch16_20_2_deg2_eps0.5",
+      "output_dir": "/home/hao/Insync/hduan7@PersonalMicrosoftSoftware.ucla.edu/OneDrive Biz/UCLA/Research/AlgebraicVerification/benchmark/results/arch16_20_2_deg2_eps0.5",
+      "evaluation": {
+        "acc_x0_unverifiable": 1.0,
+        "acc_counterexample": 1.0,
+        "acc_x0_clean": 1.0,
+        "n_correct_x0_unv": 10,
+        "n_correct_cex": 10,
+        "n_correct_x0_clean": 10
+      }
+    },
+    {
+      "config": "arch16_20_2_deg3_eps0.2",
+      "output_dir": "/home/hao/Insync/hduan7@PersonalMicrosoftSoftware.ucla.edu/OneDrive Biz/UCLA/Research/AlgebraicVerification/benchmark/results/arch16_20_2_deg3_eps0.2",
+      "evaluation": {
+        "acc_x0_unverifiable": 1.0,
+        "acc_counterexample": 1.0,
+        "acc_x0_clean": 1.0,
+        "n_correct_x0_unv": 10,
+        "n_correct_cex": 10,
+        "n_correct_x0_clean": 10
+      }
+    },
+    {
+      "config": "arch16_20_2_deg3_eps0.5",
+      "output_dir": "/home/hao/Insync/hduan7@PersonalMicrosoftSoftware.ucla.edu/OneDrive Biz/UCLA/Research/AlgebraicVerification/benchmark/results/arch16_20_2_deg3_eps0.5",
+      "evaluation": {
+        "acc_x0_unverifiable": 1.0,
+        "acc_counterexample": 1.0,
+        "acc_x0_clean": 1.0,
+        "n_correct_x0_unv": 10,
+        "n_correct_cex": 10,
+        "n_correct_x0_clean": 10
+      }
+    }
+  ]
+}

@@ -17,11 +17,12 @@ struct PolynomialNeuralNetwork
 end
 
 
-function poly_activation(x, coeffs, degree, homogeneous)
+function poly_activation(x, coeffs, degree::Int, homogeneous::Bool)
     """Apply polynomial activation: c[0] + c[1]*x + c[2]*x^2 + ..."""
     if homogeneous
-        # Vectorized: c[degree] * x^degree
-        return coeffs[degree+1] .* x .^ degree
+        # Homogeneous: single coefficient stored at index 1
+        # Python saves coeffs as shape (1,) for homogeneous
+        return coeffs[1] .* x .^ degree
     else
         # Vectorized Horner's method for polynomial evaluation
         result = coeffs[degree+1] .* ones(eltype(x), size(x)...)
@@ -108,18 +109,35 @@ function load_model(path::String)
 
     # Validate files exist
     if !isfile(config_path)
-        error("Model config not found: $config_path")
+        display_config = try
+            relpath(config_path)
+        catch
+            config_path
+        end
+        error("Model config not found: $display_config")
     end
     if !isfile(weights_path)
-        error("Model weights not found: $weights_path")
+        display_weights = try
+            relpath(weights_path)
+        catch
+            weights_path
+        end
+        error("Model weights not found: $display_weights")
     end
 
     # Read config
     cfg = JSON3.read(read(config_path, String))
     model_class = String(cfg["model_class"])
 
+    # Use relative path for cleaner output
+    display_path = try
+        relpath(resolved_path)
+    catch
+        resolved_path
+    end
+
     println(repeat("=", 60))
-    println("Loading model from: $resolved_path")
+    println("Loading model from: $display_path")
     println("Model class: $model_class")
 
     # Read weights

@@ -27,6 +27,10 @@ experiments/
 *.pth
 *.h5
 
+# Project-specific ignores
+archive/
+notebooks/
+
 # Data files (if you have large datasets)
 # Uncomment if needed:
 # *.npz

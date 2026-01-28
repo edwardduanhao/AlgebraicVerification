@@ -11,7 +11,7 @@ export euclidean_hc, robust_radius
 function euclidean_hc(f, x, xi::Vector{Float64}, verbose::Bool=false)
     @polyvar lmbda
 
-    L = sum((x .- xi) .^ 2) - lmbda * f
+    L = sum((x .- xi) .^ 2) + lmbda * f
     ∇L = differentiate(L, [x; lmbda])
     F = System(∇L; variables=[x; lmbda])
     sols = solve(F, show_progress=verbose)
@@ -155,7 +155,13 @@ function robust_radius(project_root::String, xi_list::Vector{Vector{Float64}};
             "closest_sol" => closest_sols_matrix
         ))
 
-        println("Results saved to: $save_path")
+        # Use relative path for cleaner output
+        display_path = try
+            relpath(save_path)
+        catch
+            save_path
+        end
+        println("Results saved to: $display_path")
 
         # Save detailed results if requested
         if save_detailed && !isempty(detailed_results)
@@ -164,7 +170,6 @@ function robust_radius(project_root::String, xi_list::Vector{Vector{Float64}};
             detailed_dir = joinpath(save_dir, "hc_detailed")
             mkpath(detailed_dir)
 
-            println("\nSaving detailed HC results...")
             for (i, details) in enumerate(detailed_results)
                 point_file = joinpath(detailed_dir, "point_$(lpad(i-1, 3, '0')).npz")
 
@@ -198,7 +203,11 @@ function robust_radius(project_root::String, xi_list::Vector{Vector{Float64}};
                 npzwrite(point_file, save_dict)
             end
 
-            println("Detailed results saved to: $detailed_dir")
+            display_detailed_dir = try
+                relpath(detailed_dir)
+            catch
+                detailed_dir
+            end
         end
     end
 

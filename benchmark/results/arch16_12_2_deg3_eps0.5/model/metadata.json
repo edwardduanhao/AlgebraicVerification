@@ -1,0 +1,15 @@
+{
+  "benchmark_config": "arch16_12_2_deg3_eps0.5",
+  "epsilon": 0.5,
+  "architecture": [
+    16,
+    12,
+    2
+  ],
+  "act_degree": 3,
+  "timestamp": "2026-01-26T14:12:03.919488",
+  "training": {
+    "num_epochs": 20000,
+    "lr": 0.001
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "model_class": "PolynomialNeuralNetwork",
+  "input_dim": 8,
+  "hidden_dims": [
+    10
+  ],
+  "output_dim": 2,
+  "act_degree": 2,
+  "homogeneous": true,
+  "bias": true
+}

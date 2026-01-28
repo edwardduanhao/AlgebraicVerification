@@ -3,12 +3,15 @@ Python interface to Julia homotopy continuation analysis.
 
 This module provides a Pythonic wrapper around Julia functions for
 robust radius computation and verification using homotopy continuation.
+
+IMPORTANT: Import this module BEFORE importing torch to avoid segfaults.
+See: https://github.com/pytorch/pytorch/issues/78829
 """
 
+import sys
 import numpy as np
 from pathlib import Path
 from typing import Union, Optional, List, Tuple
-import sys
 
 # Lazy import of juliacall (only loaded when needed)
 _jl = None
@@ -34,7 +37,7 @@ def _initialize_julia():
         # Activate the local Julia environment
         project_toml = project_root / "Project.toml"
         if project_toml.exists():
-            print(f"Activating Julia project: {project_root}")
+            print(f"Activating Julia project environment...")
             jl.seval(f'using Pkg; Pkg.activate("{project_root}")')
             print("Julia project activated.")
         else:
@@ -102,10 +105,15 @@ def compute_robust_radius(
     # Initialize Julia
     jl = _initialize_julia()
 
+    # Get the project root (parent of parent of this file)
+    project_root = Path(__file__).parent.parent.parent
+
     # Convert experiment_path to Path and resolve
     exp_path = Path(experiment_path).resolve()
     if not exp_path.exists():
-        raise FileNotFoundError(f"Experiment path not found: {exp_path}")
+        raise FileNotFoundError(
+            f"Experiment path not found: {exp_path.relative_to(project_root)}"
+        )
 
     # Convert xi_list to numpy array if needed
     # juliacall automatically converts numpy arrays to Julia arrays
@@ -125,13 +133,18 @@ def compute_robust_radius(
 
     # Call Julia function
     print(f"\nCalling Julia robust_radius function...")
-    print(f"Experiment: {exp_path}")
+    print(f"Experiment: {exp_path.relative_to(project_root)}")
     print(f"Number of points: {len(xi_list)}")
 
     # Pass numpy array directly - Julia will dispatch to the matrix overload
     # and handle conversion to Vector{Vector{Float64}} internally
-    jl.robust_radius(
-        str(exp_path), xi_list, verbose=verbose, save_path=save_path, save_detailed=save_detailed
+    # Use module-qualified name to avoid ambiguity
+    jl.seval("EuclideanHC.robust_radius")(
+        str(exp_path),
+        xi_list,
+        verbose=verbose,
+        save_path=save_path,
+        save_detailed=save_detailed,
     )
 
     # Load and return results
@@ -148,9 +161,10 @@ def compute_robust_radius(
         if save_detailed:
             detailed_dir = exp_path / "analysis" / "hc_detailed"
             results["detailed_dir"] = str(detailed_dir)
-            print(f"Detailed results saved to: {detailed_dir}")
+            print(
+                f"Detailed results saved to: {detailed_dir.relative_to(project_root)}"
+            )
 
-        print(f"\nResults loaded from: {save_path}")
         return results
     else:
         print("\nWarning: Results not saved. Set save_results=True to save.")
@@ -179,7 +193,7 @@ def load_robust_radius_results(
     results_path = exp_path / "analysis" / filename
 
     if not results_path.exists():
-        raise FileNotFoundError(f"Results file not found: {results_path}")
+        raise FileNotFoundError(f"Results file not found: {_relpath(results_path)}")
 
     data = np.load(results_path)
     return {
@@ -223,8 +237,8 @@ def verify_experiment(experiment_path: Union[str, Path]) -> dict:
 
     status = {
         "valid": True,
-        "path": str(exp_path),
-        "resolved_path": str(resolved_path),
+        "path": _relpath(exp_path),
+        "resolved_path": _relpath(resolved_path),
         "is_symlink": is_symlink,
         "model_dir_exists": model_dir.exists(),
         "config_exists": config_file.exists(),
@@ -236,7 +250,9 @@ def verify_experiment(experiment_path: Union[str, Path]) -> dict:
     # Collect errors
     if not resolved_path.exists():
         status["valid"] = False
-        status["errors"].append(f"Experiment path does not exist: {resolved_path}")
+        status["errors"].append(
+            f"Experiment path does not exist: {_relpath(resolved_path)}"
+        )
 
     if not model_dir.exists():
         status["valid"] = False
@@ -251,3 +267,8 @@ def verify_experiment(experiment_path: Union[str, Path]) -> dict:
         status["errors"].append("Model weights file not found")
 
     return status
+
+
+if __name__ == "__main__":
+    _initialize_julia()
+    print("Module hc.py loaded successfully.")

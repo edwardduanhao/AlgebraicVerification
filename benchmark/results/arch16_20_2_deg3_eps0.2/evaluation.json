@@ -1,0 +1,8 @@
+{
+  "acc_x0_unverifiable": 1.0,
+  "acc_counterexample": 1.0,
+  "acc_x0_clean": 1.0,
+  "n_correct_x0_unv": 10,
+  "n_correct_cex": 10,
+  "n_correct_x0_clean": 10
+}
