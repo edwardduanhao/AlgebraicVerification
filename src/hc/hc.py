@@ -8,6 +8,7 @@ IMPORTANT: Import this module BEFORE importing torch to avoid segfaults.
 See: https://github.com/pytorch/pytorch/issues/78829
 """
 
+import os
 import sys
 import numpy as np
 from pathlib import Path
@@ -26,6 +27,9 @@ def _initialize_julia():
         return _jl
 
     try:
+        # Enable multithreaded path tracking in HomotopyContinuation.jl
+        # os.environ.setdefault("JULIA_NUM_THREADS", "auto")
+
         from juliacall import Main as jl
 
         # Get the project root (parent of parent of this file)
@@ -156,6 +160,18 @@ def compute_robust_radius(
             "closest_sol": data["closest_sol"],
             "save_path": save_path,
         }
+
+        # Load timing data
+        timing_path = analysis_dir / "timing.npz"
+        if timing_path.exists():
+            timing_data = np.load(timing_path)
+            results["timing"] = {
+                "model_load_wall_s": float(timing_data["model_load_wall_s"]),
+                "model_load_compile_s": float(timing_data["model_load_compile_s"]),
+                "instance_wall_s": timing_data["instance_wall_s"].astype(float),
+                "instance_compile_s": timing_data["instance_compile_s"].astype(float),
+                "n_threads": int(timing_data["n_threads"]),
+            }
 
         # Add detailed results directory path if detailed saving was requested
         if save_detailed:

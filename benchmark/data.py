@@ -276,7 +276,9 @@ if __name__ == "__main__":
 
     # Verify perturbation bounds (Euclidean norm)
     delta_l2_norm = np.linalg.norm(unverifiable["delta_cex"], axis=1)
-    print(f"  ||delta_cex||_2: min={delta_l2_norm.min():.4f}, max={delta_l2_norm.max():.4f}")
+    print(
+        f"  ||delta_cex||_2: min={delta_l2_norm.min():.4f}, max={delta_l2_norm.max():.4f}"
+    )
     print(f"  Expected range: [{config.r * config.epsilon:.4f}, {config.epsilon:.4f}]")
     print()
 

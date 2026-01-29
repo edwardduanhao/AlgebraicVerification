@@ -55,7 +55,9 @@ def verify_single_config(
     x0_all = np.concatenate([x0_unv, x0_clean], axis=0)  # (n_unv + n_clean, input_dim)
 
     if verbose:
-        print(f"\nVerifying {len(x0_all)} instances ({n_unv} unverifiable + {n_clean} clean)...")
+        print(
+            f"\nVerifying {len(x0_all)} instances ({n_unv} unverifiable + {n_clean} clean)..."
+        )
 
     # Single call to compute_robust_radius for all instances
     results_all = compute_robust_radius(
@@ -108,6 +110,20 @@ def verify_single_config(
         },
     }
 
+    # Include timing data if available
+    if "timing" in results_all:
+        t = results_all["timing"]
+        verification_results["timing"] = {
+            "model_load_wall_s": t["model_load_wall_s"],
+            "model_load_compile_s": t["model_load_compile_s"],
+            "total_hc_wall_s": float(t["instance_wall_s"].sum()),
+            "total_hc_compile_s": float(t["instance_compile_s"].sum()),
+            "mean_instance_wall_s": float(t["instance_wall_s"].mean()),
+            "per_instance_wall_s": t["instance_wall_s"].tolist(),
+            "per_instance_compile_s": t["instance_compile_s"].tolist(),
+            "n_threads": t["n_threads"],
+        }
+
     if verbose:
         print(f"\nResults:")
         print(f"  Unverifiable instances (expect falsified):")
@@ -130,10 +146,24 @@ def verify_single_config(
         print(
             f"    Robust radius: min={verification_results['clean']['min_radius']:.4f}, max={verification_results['clean']['max_radius']:.4f}"
         )
-        print(f"\n  Summary: unv_falsified={verification_results['unverifiable']['n_falsified']}, "
-              f"unv_verified={verification_results['unverifiable']['n_verified']}, "
-              f"clean_verified={verification_results['clean']['n_verified']}, "
-              f"clean_falsified={verification_results['clean']['n_falsified']}")
+        print(
+            f"\n  Summary: unv_falsified={verification_results['unverifiable']['n_falsified']}, "
+            f"unv_verified={verification_results['unverifiable']['n_verified']}, "
+            f"clean_verified={verification_results['clean']['n_verified']}, "
+            f"clean_falsified={verification_results['clean']['n_falsified']}"
+        )
+
+        if "timing" in verification_results:
+            t = verification_results["timing"]
+            print(f"\n  Timing:")
+            print(f"    Julia threads: {t['n_threads']}")
+            print(
+                f"    Model load: {t['model_load_wall_s']:.3f}s wall, {t['model_load_compile_s']:.3f}s compile"
+            )
+            print(
+                f"    HC total: {t['total_hc_wall_s']:.3f}s wall, {t['total_hc_compile_s']:.3f}s compile"
+            )
+            print(f"    HC mean/instance: {t['mean_instance_wall_s']:.3f}s")
 
     # Save verification results
     verify_path = config_dir / "verification_results.json"
@@ -205,27 +235,44 @@ def verify_all(
     with open(csv_path, "w", newline="") as f:
         writer = csv.writer(f)
         # Header
-        writer.writerow([
-            "config",
-            "epsilon",
-            "unv_falsified",  # Unverifiable instances correctly falsified
-            "unv_verified",   # Unverifiable instances incorrectly verified (false positive)
-            "clean_verified", # Clean instances verified
-            "clean_falsified", # Clean instances falsified
-        ])
+        writer.writerow(
+            [
+                "config",
+                "epsilon",
+                "unv_falsified",  # Unverifiable instances correctly falsified
+                "unv_verified",  # Unverifiable instances incorrectly verified (false positive)
+                "clean_verified",  # Clean instances verified
+                "clean_falsified",  # Clean instances falsified
+                "model_load_wall_s",
+                "model_load_compile_s",
+                "total_hc_wall_s",
+                "total_hc_compile_s",
+                "mean_instance_wall_s",
+                "n_threads",
+            ]
+        )
         # Data rows
         for r in all_results:
             if "error" in r:
-                writer.writerow([r["config"], "", "", "", "", ""])
+                writer.writerow([r["config"]] + [""] * 11)
             else:
-                writer.writerow([
-                    r["config"],
-                    r["epsilon"],
-                    r["unverifiable"]["n_falsified"],
-                    r["unverifiable"]["n_verified"],
-                    r["clean"]["n_verified"],
-                    r["clean"]["n_falsified"],
-                ])
+                t = r.get("timing", {})
+                writer.writerow(
+                    [
+                        r["config"],
+                        r["epsilon"],
+                        r["unverifiable"]["n_falsified"],
+                        r["unverifiable"]["n_verified"],
+                        r["clean"]["n_verified"],
+                        r["clean"]["n_falsified"],
+                        f"{t['model_load_wall_s']:.3f}" if t else "",
+                        f"{t['model_load_compile_s']:.3f}" if t else "",
+                        f"{t['total_hc_wall_s']:.3f}" if t else "",
+                        f"{t['total_hc_compile_s']:.3f}" if t else "",
+                        f"{t['mean_instance_wall_s']:.3f}" if t else "",
+                        t.get("n_threads", "") if t else "",
+                    ]
+                )
 
     if verbose:
         print(f"\n{'='*60}")
@@ -233,19 +280,30 @@ def verify_all(
         print(f"{'='*60}")
 
         # Print summary table
-        print(f"\n{'Config':<30} {'Unv Fals':<12} {'Unv Ver':<12} {'Cln Ver':<12} {'Cln Fals':<12}")
-        print("-" * 78)
+        print(
+            f"\n{'Config':<30} {'Unv Fals':<10} {'Unv Ver':<10} {'Cln Ver':<10} {'Cln Fals':<10} {'Load(s)':<10} {'HC(s)':<10} {'Compile(s)':<10} {'Threads':<8}"
+        )
+        print("-" * 118)
         for r in all_results:
             if "error" in r:
                 print(f"{r['config']:<30} ERROR: {r['error']}")
             else:
-                print(
+                t = r.get("timing", {})
+                line = (
                     f"{r['config']:<30} "
-                    f"{r['unverifiable']['n_falsified']:<12} "
-                    f"{r['unverifiable']['n_verified']:<12} "
-                    f"{r['clean']['n_verified']:<12} "
-                    f"{r['clean']['n_falsified']:<12}"
+                    f"{r['unverifiable']['n_falsified']:<10} "
+                    f"{r['unverifiable']['n_verified']:<10} "
+                    f"{r['clean']['n_verified']:<10} "
+                    f"{r['clean']['n_falsified']:<10} "
                 )
+                if t:
+                    line += (
+                        f"{t['model_load_wall_s']:<10.3f} "
+                        f"{t['total_hc_wall_s']:<10.3f} "
+                        f"{t['total_hc_compile_s']:<10.3f} "
+                        f"{t.get('n_threads', ''):<8}"
+                    )
+                print(line)
 
         print(f"\nResults saved to: {results_dir}")
         print(f"CSV summary: {csv_path}")
