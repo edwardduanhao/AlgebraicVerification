@@ -46,7 +46,7 @@ def make_glossy_surface(verts, faces, x_range, y_range, z_range, grid_size):
         i=faces[:, 0],
         j=faces[:, 1],
         k=faces[:, 2],
-        color="rgb(65, 135, 190)",
+        color="rgb(25, 140, 235)",
         opacity=1.0,
         flatshading=False,
         lighting=dict(
@@ -81,14 +81,14 @@ def make_glossy_sphere(center, radius):
         z=z,
         surfacecolor=shade,
         colorscale=[
-            [0.0, "rgb(120, 30, 30)"],
-            [0.5, "rgb(200, 55, 55)"],
-            [1.0, "rgb(240, 110, 90)"],
+            [0.0, "rgb(190, 50, 50)"],
+            [0.5, "rgb(215, 55, 50)"],
+            [1.0, "rgb(240, 75, 60)"],
         ],
-        opacity=0.45,
+        opacity=0.55,
         showscale=False,
         lighting=dict(
-            ambient=0.5, diffuse=0.5, specular=0.2, roughness=0.55, fresnel=0.05
+            ambient=0.6, diffuse=0.5, specular=0.2, roughness=0.4, fresnel=0.05
         ),
         lightposition=dict(x=2, y=0.5, z=1.5),
         showlegend=False,
@@ -199,7 +199,7 @@ if __name__ == "__main__":
             y=xi_array[:, 1],
             z=xi_array[:, 2],
             mode="markers",
-            marker=dict(color="black", size=2),
+            marker=dict(color="black", size=3),
             showlegend=False,
         )
     )

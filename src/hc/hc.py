@@ -17,18 +17,38 @@ from typing import Union, Optional, List, Tuple
 # Lazy import of juliacall (only loaded when needed)
 _jl = None
 _julia_loaded = False
+_julia_num_threads = None  # Track the thread count used at initialization
 
 
-def _initialize_julia():
-    """Initialize Julia environment (lazy initialization)."""
-    global _jl, _julia_loaded
+def _initialize_julia(num_threads: Union[int, str] = "auto"):
+    """Initialize Julia environment (lazy initialization).
+
+    Args:
+        num_threads: Number of Julia threads to use for parallel path tracking.
+                     "auto" (default) uses all available cores.
+                     Can also be an integer specifying the exact thread count.
+    """
+    global _jl, _julia_loaded, _julia_num_threads
 
     if _julia_loaded:
+        if _julia_num_threads is not None and str(num_threads) != str(
+            _julia_num_threads
+        ):
+            print(
+                f"Warning: Julia already initialized with {_julia_num_threads} thread(s). "
+                f"Cannot change to {num_threads}. Restart the Python process to change thread count."
+            )
         return _jl
 
     try:
-        # Enable multithreaded path tracking in HomotopyContinuation.jl
-        # os.environ.setdefault("JULIA_NUM_THREADS", "auto")
+        # Set thread count before importing juliacall (must happen before Julia starts)
+        thread_value = str(num_threads)
+        os.environ["JULIA_NUM_THREADS"] = thread_value
+        _julia_num_threads = thread_value
+
+        # Required for thread safety with juliacall when using multiple threads.
+        # See: https://juliapy.github.io/PythonCall.jl/stable/faq/#Is-PythonCall/JuliaCall-thread-safe
+        os.environ.setdefault("PYTHON_JULIACALL_HANDLE_SIGNALS", "yes")
 
         from juliacall import Main as jl
 
@@ -76,6 +96,7 @@ def compute_robust_radius(
     save_results: bool = True,
     output_filename: str = "robust_radius.npz",
     save_detailed: bool = False,
+    num_threads: Union[int, str] = "auto",
 ) -> dict:
     """
     Compute robust radius for a set of input points using Julia.
@@ -90,6 +111,9 @@ def compute_robust_radius(
         output_filename: Name of output file (default: "robust_radius.npz")
         save_detailed: If True, save detailed HC solutions for each point and boundary
                       Results saved to analysis/hc_detailed/point_XXX.npz
+        num_threads: Number of Julia threads for parallel path tracking.
+                     "auto" (default) uses all available cores.
+                     Can also be an integer for a specific thread count.
 
     Returns:
         Dictionary containing:
@@ -107,7 +131,7 @@ def compute_robust_radius(
         >>> print(f"Robust radii: {results['min_dist']}")
     """
     # Initialize Julia
-    jl = _initialize_julia()
+    jl = _initialize_julia(num_threads=num_threads)
 
     # Get the project root (parent of parent of this file)
     project_root = Path(__file__).parent.parent.parent

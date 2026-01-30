@@ -38,13 +38,13 @@ def generate_configs() -> List[BenchmarkConfig]:
     configs = []
 
     # Fixed parameters
-    input_dim = 8
-    # input_dim = 16
+    # input_dim = 8
+    input_dim = 12
     output_dim = 2
 
     # Variable parameters
-    hidden_dims_list = [[6], [10]]  # [8,6,2] and [8,10,2]
-    # hidden_dims_list = [[12], [20]]
+    # hidden_dims_list = [[6], [10]]  # [8,6,2] and [8,10,2]
+    hidden_dims_list = [[8], [16]]
     act_degrees = [2, 3]
     epsilons = [0.2, 0.5]
 
