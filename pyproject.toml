@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "algebraic-verification"
+version = "0.1.0"
+description = "Algebraic Robustness Verification of Polynomial Neural Networks via Homotopy Continuation."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Yulia Alexandr"},
+    {name = "Hao Duan"},
+    {name = "Guido Montufar"},
+]
+dependencies = [
+    "torch>=2.0",
+    "numpy>=1.24",
+    "juliacall>=0.9",
+    "h5py>=3.0",
+    "matplotlib>=3.5",
+    "plotly>=5.0",
+    "scikit-image>=0.20",
+    "tqdm>=4.60",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+onnx = ["onnx>=1.14", "onnxruntime>=1.16"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+namespaces = true

@@ -157,6 +157,62 @@ guard that pins the subprocess-isolation contract. Each test costs ≈ 20 s of
 Julia + HomotopyContinuation precompile in the worker; the full suite runs
 in about 90 seconds.
 
+## VNN-COMP / completenessbench integration
+
+`verify_vnnlib.py` at the repo root is a thin VNN-COMP-shaped CLI around
+`compute_robust_radius`. It is the entry point the
+[completenessbench](https://github.com/dtroxell19/completenessbench) harness
+invokes when running this verifier on a benchmark.
+
+```bash
+python verify_vnnlib.py <model.onnx> <property.vnnlib> \
+    [--timeout S] [--device cpu|cuda] [--result-file PATH]
+```
+
+Prints one `Result: unsat|sat|unknown|timeout` line to stdout and exits
+`0`/`1`/`2` respectively, matching the conventions of the other adapters in
+`completenessbench/verifier_adapters/`.
+
+**Sidecar contract.** The wrapper does not parse the ONNX graph. Instead it
+reads a `<model.onnx>.pnn.json` sidecar that the matching constructor
+(`pnn_polynomial.algebraic` in completenessbench) emits alongside each
+instance — it contains the architecture and state-dict needed to rebuild the
+`PolynomialNeuralNetwork`. The ONNX is kept for the harness's own
+accounting and for any non-HC verifier that consumes the same benchmark.
+
+**L∞ ↔ L2 translation.** completenessbench properties are standard L∞ boxes;
+`compute_robust_radius` returns an L2 radius `r` from the box center. The
+wrapper translates with the strict geometry rule:
+
+| condition | verdict |
+|---|---|
+| `r ≥ ε · √n` | `unsat` (the L∞ box of half-width ε fits inside the certified L2 ball) |
+| `r < ε` and the closest boundary point can be nudged into a class-flipping witness inside the box | `sat` (with a witness past the boundary) |
+| otherwise | `unknown` (the L2 certificate cannot decide the L∞ box) |
+
+The `unknown` band `ε ≤ r < ε·√n` widens with input dimension — by design,
+this verifier reports honestly rather than claiming spurious robustness.
+
+**Setup from the completenessbench side.**
+
+```bash
+# in completenessbench's conda env
+pip install -e /path/to/AlgebraicVerification
+export ALGEBRAIC_VERIFIER_DIR=/path/to/AlgebraicVerification
+
+# build instances and verify
+python -m completenessbench.cli.create_benchmark \
+    --spec configs/my_pnn_sweep.yaml --out_dir ./benchmarks/pnn
+python -m completenessbench.cli.verify_benchmark \
+    --benchmark ./benchmarks/pnn --verifier algebraic_pnn \
+    --out_dir ./runs/pnn
+```
+
+**Reliability note.** The same activation-degree caveat as in the
+HomotopyContinuation core applies: degree-2 instances are reliable; higher
+degrees push HC outside its reliable regime and the wrapper will
+increasingly return `unknown`.
+
 ## ED Degree and ED Discriminant
 
 Julia and Macaulay2 implementations for the algebraic invariants of the

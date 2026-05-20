@@ -4,6 +4,11 @@
 *$py.class
 *.so
 
+# Build artifacts from pip install -e .
+*.egg-info/
+build/
+dist/
+
 # Virtual environments
 .env
 .venv
@@ -36,6 +41,9 @@ examples/**/*.svg
 archive/
 notebooks/
 benchmark/results/
+
+# Sibling/companion repositories cloned in-tree for convenience
+completenessbench/
 
 # Data files (if you have large datasets)
 # Uncomment if needed:
