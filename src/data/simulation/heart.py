@@ -2,20 +2,18 @@ import numpy as np
 from torch.utils.data.dataset import Dataset
 
 
-class SteinerRomanDataset(Dataset):
+class HeartDataset(Dataset):
     def __init__(
         self,
         size: int = 1000,
-        r: float = 1.0,
         seed: int = 42,
         transform: callable = None,
     ):
         """
-        Steiner-Roman dataset generator with 2 classes.
+        Heart dataset generator with 2 classes.
 
         Args:
             size (int, optional): Number of samples to generate. Defaults to 1000.
-            r (float, optional): Radius parameter for the dataset. Defaults to 1.0.
             seed (int, optional): Random seed for reproducibility. Defaults to 42.
             transform (callable, optional): Optional transform to apply to samples. Defaults to None.
         """
@@ -24,7 +22,6 @@ class SteinerRomanDataset(Dataset):
 
         # Set numpy random seed for reproducibility
         self.rng = np.random.RandomState(seed)
-        self.r = r
         self.transform = transform
         self.__features = []
         self.__labels = []
@@ -40,7 +37,7 @@ class SteinerRomanDataset(Dataset):
 
     def get_sample(self, goal: int = None):
         """
-        Sample a single data point from the Steiner-Roman dataset.
+        Sample a single data point from the Heart dataset.
 
         Args:
             goal (int, optional): Desired class label for the sample. If None, any class is accepted.
@@ -52,8 +49,8 @@ class SteinerRomanDataset(Dataset):
         found_sample_yet = False
 
         while not found_sample_yet:
-            # Sample uniformly in [-r^2, r^2] cube
-            x = self.rng.uniform(low=-self.r**2, high=self.r**2, size=3)
+            # Sample uniformly in [-1.5, 1.5] cube
+            x = self.rng.uniform(low=-1.5, high=1.5, size=3)
 
             # Determine class based on angular position
             c = self.which_class(x)
@@ -69,19 +66,17 @@ class SteinerRomanDataset(Dataset):
         Determine the class of a point based on its polar coordinates.
 
         Args:
-            x (float): Point coordinates.
+            x (np.ndarray): Point coordinates.
 
         Returns:
             int: Class label of the point (0 or 1).
         """
 
         c = (
-            x[0] ** 2 * x[1] ** 2
-            + x[1] ** 2 * x[2] ** 2
-            + x[2] ** 2 * x[0] ** 2
-            - self.r**2 * x[0] * x[1] * x[2]
-            > 0
-        )
+            (x[0] ** 2 + 20 * x[1] ** 2 + x[2] ** 2 - 1) ** 3
+            - x[0] ** 2 * x[2] ** 3
+            - x[1] ** 2 * x[2] ** 3
+        ) > 0
 
         return int(c)
 

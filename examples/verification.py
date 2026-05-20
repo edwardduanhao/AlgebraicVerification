@@ -5,17 +5,13 @@ homotopy continuation, and visualize the decision boundary in 3D.
 Reproduces Figure 1 in the paper.
 """
 
-import sys, os
+import sys
+from pathlib import Path
 
-# Add the project root directory to the path
-project_root = os.path.abspath("..")
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-# IMPORTANT: Import juliacall BEFORE torch to avoid segfaults.
-# juliacall is used internally by src.hc for homotopy continuation.
-# See: https://github.com/pytorch/pytorch/issues/78829
-from juliacall import Main as jl
+# Resolve the project root relative to this file so the script runs from any cwd.
+project_root = Path(__file__).resolve().parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 import numpy as np
 import torch
@@ -101,6 +97,11 @@ def make_glossy_sphere(center, radius):
 
 if __name__ == "__main__":
     # ── 1. Data & Model Setup ────────────────────────────────────────────
+    # Steiner Roman + act_degree=2 keeps the decision boundary at degree 4,
+    # which is well within HomotopyContinuation's reliable regime. Bumping
+    # act_degree pushes the boundary to higher degrees (e.g. degree 9 with
+    # act_degree=3 and two hidden layers), where path-tracking can drop
+    # real critical points and produce an over-stated robust radius.
     train_dataset = SteinerRomanDataset(size=1000)
     train_loader = DataLoader(train_dataset, batch_size=1000)
 
@@ -134,8 +135,8 @@ if __name__ == "__main__":
     )
 
     # ── 4. Robustness Verification ───────────────────────────────────────
-    # Compute the certified robust radius around each query point via
-    # homotopy continuation (solved in Julia through juliacall).
+    # Compute the certified robust radius around each query point.
+    # Julia runs in an isolated worker process to avoid torch/juliacall crashes.
     xi_list = [[0.45, 0.45, 0.45]]
 
     res = compute_robust_radius(

@@ -1,6 +1,5 @@
 # Python
 **/__pycache__/
-__init__.py
 *.py[cod]
 *$py.class
 *.so
@@ -27,6 +26,11 @@ ENV/
 experiments/
 *.pth
 *.h5
+
+# Generated example figures (regenerable from the scripts)
+examples/**/*.png
+examples/**/*.pdf
+examples/**/*.svg
 
 # Project-specific ignores
 archive/

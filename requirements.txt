@@ -1,0 +1,27 @@
+# Python dependencies for Algebraic Robustness Verification.
+#
+# Julia packages are managed separately via Project.toml/Manifest.toml; run
+# `julia --project=. -e 'using Pkg; Pkg.instantiate()'` once after cloning.
+
+# Core ML
+torch>=2.0
+numpy>=1.24
+
+# Julia interop (juliacall ships its own Julia automatically if needed)
+juliacall>=0.9
+
+# Model I/O
+h5py>=3.0
+
+# Plotting (examples + utility helpers in src/utils)
+matplotlib>=3.5
+plotly>=5.0
+
+# Marching cubes for the 3D decision-boundary visualization in examples/verification.py
+scikit-image>=0.20
+
+# Training progress bars
+tqdm>=4.60
+
+# Development / regression tests (optional but recommended)
+pytest>=7.0

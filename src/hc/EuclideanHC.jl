@@ -8,9 +8,9 @@ using NPZ
 
 export euclidean_hc, robust_radius
 
-function euclidean_hc(f, x, xi::Vector{Float64}, verbose::Bool=false)
-    @polyvar lmbda
-
+function euclidean_hc(f, x, xi::Vector{Float64}, lmbda, verbose::Bool=false)
+    # `lmbda` is the Lagrange multiplier polyvar; created once per run by the
+    # caller so we don't keep growing DynamicPolynomials' variable counter.
     L = sum((x .- xi) .^ 2) + lmbda * f
     ∇L = differentiate(L, [x; lmbda])
     F = System(∇L; variables=[x; lmbda])
@@ -64,6 +64,11 @@ function robust_radius(project_root::String, xi_list::Vector{Vector{Float64}};
     model_load_compile_s = timed_load.compile_time
     F, x = model_forward
 
+    # Create the Lagrange-multiplier polyvar exactly once for this run.
+    # Defining it inside euclidean_hc per call would grow DynamicPolynomials'
+    # global variable counter for every (xi, class-pair) pair.
+    @polyvar lmbda
+
     num_classes = length(F)
     robust_radii = Vector{Tuple{Float64,Any}}()
     detailed_results = []  # Store detailed results if requested
@@ -111,7 +116,7 @@ function robust_radius(project_root::String, xi_list::Vector{Vector{Float64}};
 
                 f = F[k] - F[l]
 
-                sol, distance, num_real, num_total, realsols, _ = euclidean_hc(f, x, xi, verbose)
+                sol, distance, num_real, num_total, realsols, _ = euclidean_hc(f, x, xi, lmbda, verbose)
 
                 # Track the global minimum
                 if !isnothing(sol) && distance < min_dist_local
@@ -146,6 +151,10 @@ function robust_radius(project_root::String, xi_list::Vector{Vector{Float64}};
         if verbose
             println("Point $idx (xi=$xi): robust radius = $(min_dist), time = $(round(timed_instance.time, digits=3))s (compile: $(round(timed_instance.compile_time, digits=3))s)")
         end
+
+        # Incremental collection between points keeps HC path-tracker allocations
+        # from piling up across long xi_list sweeps.
+        GC.gc(false)
     end
 
     # Save results if save_path is provided

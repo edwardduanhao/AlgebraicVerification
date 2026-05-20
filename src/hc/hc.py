@@ -4,51 +4,58 @@ Python interface to Julia homotopy continuation analysis.
 This module provides a Pythonic wrapper around Julia functions for
 robust radius computation and verification using homotopy continuation.
 
-IMPORTANT: Import this module BEFORE importing torch to avoid segfaults.
-See: https://github.com/pytorch/pytorch/issues/78829
+The public API (``compute_robust_radius``) executes Julia work in an
+isolated Python subprocess so it remains safe to call from processes that
+have already imported PyTorch or other heavy native libraries.
 """
 
+import argparse
 import os
+import subprocess
 import sys
-import numpy as np
+import tempfile
+import threading
+from collections import deque
 from pathlib import Path
-from typing import Union, Optional, List, Tuple
+from typing import Union, Optional, List
 
-# Lazy import of juliacall (only loaded when needed)
-_jl = None
-_julia_loaded = False
-_julia_num_threads = None  # Track the thread count used at initialization
+import numpy as np
+
+
+def _display_path(path: Union[str, Path], anchor: Optional[Path] = None) -> str:
+    """Return a pretty display string for ``path``; falls back to absolute."""
+    p = Path(path)
+    if anchor is not None:
+        try:
+            return str(p.relative_to(anchor))
+        except ValueError:
+            pass
+    try:
+        return str(p.relative_to(Path.cwd()))
+    except ValueError:
+        return str(p)
 
 
 def _initialize_julia(num_threads: Union[int, str] = "auto"):
-    """Initialize Julia environment (lazy initialization).
+    """Initialize Julia in the current process (intended for the worker subprocess).
+
+    The worker subprocess calls this exactly once. The Julia thread count and
+    signal-handling mode must be set in ``os.environ`` BEFORE ``juliacall`` is
+    imported, so this function does both before importing.
 
     Args:
-        num_threads: Number of Julia threads to use for parallel path tracking.
-                     "auto" (default) uses all available cores.
-                     Can also be an integer specifying the exact thread count.
+        num_threads: Number of Julia threads. ``"auto"`` (default) uses all
+                     available cores; an integer pins to a specific count.
     """
-    global _jl, _julia_loaded, _julia_num_threads
-
-    if _julia_loaded:
-        if _julia_num_threads is not None and str(num_threads) != str(
-            _julia_num_threads
-        ):
-            print(
-                f"Warning: Julia already initialized with {_julia_num_threads} thread(s). "
-                f"Cannot change to {num_threads}. Restart the Python process to change thread count."
-            )
-        return _jl
-
     try:
-        # Set thread count before importing juliacall (must happen before Julia starts)
-        thread_value = str(num_threads)
-        os.environ["JULIA_NUM_THREADS"] = thread_value
-        _julia_num_threads = thread_value
+        # Must be set before juliacall is imported.
+        os.environ["JULIA_NUM_THREADS"] = str(num_threads)
 
-        # Required for thread safety with juliacall when using multiple threads.
+        # Required for stability when Julia uses multiple threads. juliacall
+        # warns and segfaults are possible without this. Set unconditionally
+        # so an inherited "no" from the parent shell can't break us.
         # See: https://juliapy.github.io/PythonCall.jl/stable/faq/#Is-PythonCall/JuliaCall-thread-safe
-        os.environ.setdefault("PYTHON_JULIACALL_HANDLE_SIGNALS", "yes")
+        os.environ["PYTHON_JULIACALL_HANDLE_SIGNALS"] = "yes"
 
         from juliacall import Main as jl
 
@@ -76,8 +83,6 @@ def _initialize_julia(num_threads: Union[int, str] = "auto"):
         jl.seval(f'include("{julia_file}")')
         jl.seval("using .EuclideanHC")
 
-        _jl = jl
-        _julia_loaded = True
         print("✓ Julia environment initialized successfully.\n")
         return jl
 
@@ -89,6 +94,224 @@ def _initialize_julia(num_threads: Union[int, str] = "auto"):
         raise RuntimeError(f"Failed to initialize Julia: {e}")
 
 
+def _compute_robust_radius_inprocess(
+    experiment_path: Union[str, Path],
+    xi_list: Union[List[List[float]], np.ndarray],
+    output_path: Union[str, Path],
+    verbose: bool = False,
+    save_detailed: bool = False,
+    num_threads: Union[int, str] = "auto",
+) -> None:
+    """Run robust radius computation in the current process.
+
+    This is the in-process entry point used by the worker subprocess. End users
+    should call ``compute_robust_radius`` instead, which spawns a worker.
+
+    Args:
+        experiment_path: Path to the experiment directory containing
+                         ``model/model_config.json`` and ``model/model_weights.h5``.
+        xi_list: Query points as a list-of-lists or numpy array of shape
+                 (n_points, dim).
+        output_path: Full file path where the NPZ result will be written.
+                     The companion ``timing.npz`` and (if requested) the
+                     ``hc_detailed/`` directory are placed alongside it.
+        verbose: If True, print Julia-side progress.
+        save_detailed: If True, also save the full HC solution set per point.
+        num_threads: Julia threads for parallel path tracking. ``"auto"`` uses
+                     all available cores; an integer pins to that count.
+    """
+    jl = _initialize_julia(num_threads=num_threads)
+    project_root = Path(__file__).parent.parent.parent
+
+    exp_path = Path(experiment_path).resolve()
+    if not exp_path.exists():
+        raise FileNotFoundError(
+            f"Experiment path not found: {_display_path(exp_path, project_root)}"
+        )
+
+    if not isinstance(xi_list, np.ndarray):
+        xi_list = np.array(xi_list)
+    if xi_list.ndim == 1:
+        xi_list = xi_list.reshape(1, -1)
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    print("\nCalling Julia robust_radius function...")
+    print(f"Experiment: {_display_path(exp_path, project_root)}")
+    print(f"Number of points: {len(xi_list)}")
+
+    # Pass numpy array directly; Julia dispatches to the matrix overload and
+    # converts to Vector{Vector{Float64}} internally.
+    jl.seval("EuclideanHC.robust_radius")(
+        str(exp_path),
+        xi_list,
+        verbose=verbose,
+        save_path=str(output_path),
+        save_detailed=save_detailed,
+    )
+
+
+_STDERR_TAIL_LINES = 80
+
+
+def _tee_stream(src, dst, ring):
+    """Read bytes from ``src`` line-by-line, write to ``dst``, keep tail in ``ring``."""
+    try:
+        for line in iter(src.readline, b""):
+            ring.append(line)
+            try:
+                dst.write(line)
+                dst.flush()
+            except Exception:
+                # Best-effort tee; don't let an output-stream failure kill the worker.
+                pass
+    finally:
+        try:
+            src.close()
+        except Exception:
+            pass
+
+
+def _run_compute_robust_radius_subprocess(
+    experiment_path: Union[str, Path],
+    xi_list: Union[List[List[float]], np.ndarray],
+    verbose: bool = False,
+    save_results: bool = True,
+    output_filename: str = "robust_radius.npz",
+    save_detailed: bool = False,
+    num_threads: Union[int, str] = "auto",
+    timeout: Optional[float] = None,
+) -> dict:
+    """Run Julia verification in an isolated worker process.
+
+    Worker stdout and stderr are streamed live to the parent's stdout/stderr.
+    The last ``_STDERR_TAIL_LINES`` of stderr are also kept in memory so they
+    can be included in the exception message if the worker exits non-zero.
+    """
+    if save_detailed and not save_results:
+        raise ValueError(
+            "save_detailed=True requires save_results=True (the detailed "
+            "results directory lives next to the saved NPZ)."
+        )
+
+    project_root = Path(__file__).parent.parent.parent
+    exp_path = Path(experiment_path).resolve()
+
+    if not exp_path.exists():
+        raise FileNotFoundError(
+            f"Experiment path not found: {_display_path(exp_path, project_root)}"
+        )
+
+    xi_array = np.asarray(xi_list)
+    if xi_array.ndim == 1:
+        xi_array = xi_array.reshape(1, -1)
+
+    with tempfile.TemporaryDirectory(prefix="hc_worker_") as tmpdir:
+        tmpdir_path = Path(tmpdir)
+        xi_path = tmpdir_path / "xi.npy"
+        np.save(xi_path, xi_array)
+
+        # Pick where the worker writes its output. Transient results go to
+        # tmpdir so concurrent calls on the same experiment can't collide.
+        if save_results:
+            analysis_dir = exp_path / "analysis"
+            analysis_dir.mkdir(exist_ok=True)
+            output_path = analysis_dir / output_filename
+        else:
+            output_path = tmpdir_path / "_results.npz"
+
+        cmd = [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "--worker",
+            "--experiment-path", str(exp_path),
+            "--xi-path", str(xi_path),
+            "--output-path", str(output_path),
+            "--num-threads", str(num_threads),
+        ]
+        if verbose:
+            cmd.append("--verbose")
+        if save_detailed:
+            cmd.append("--save-detailed")
+
+        env = os.environ.copy()
+        # Unconditional: an inherited "no" would silently break multithreaded
+        # Julia under signal-driven GC.
+        env["PYTHON_JULIACALL_HANDLE_SIGNALS"] = "yes"
+
+        stdout_dst = getattr(sys.stdout, "buffer", sys.stdout)
+        stderr_dst = getattr(sys.stderr, "buffer", sys.stderr)
+        stdout_ring: deque = deque(maxlen=1)
+        stderr_ring: deque = deque(maxlen=_STDERR_TAIL_LINES)
+
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(project_root),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=0,
+        )
+        t_out = threading.Thread(
+            target=_tee_stream, args=(proc.stdout, stdout_dst, stdout_ring), daemon=True
+        )
+        t_err = threading.Thread(
+            target=_tee_stream, args=(proc.stderr, stderr_dst, stderr_ring), daemon=True
+        )
+        t_out.start()
+        t_err.start()
+        try:
+            returncode = proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            t_out.join()
+            t_err.join()
+            raise RuntimeError(
+                f"Julia worker exceeded timeout of {timeout}s and was killed."
+            )
+        t_out.join()
+        t_err.join()
+
+        if returncode != 0:
+            stderr_tail = b"".join(stderr_ring).decode("utf-8", errors="replace")
+            raise RuntimeError(
+                f"Julia worker failed with exit code {returncode}.\n"
+                f"--- last {_STDERR_TAIL_LINES} lines of worker stderr ---\n"
+                f"{stderr_tail}"
+            )
+
+        if not output_path.exists():
+            raise RuntimeError(
+                f"Julia worker exited 0 but did not produce results at {output_path}."
+            )
+
+        with np.load(output_path) as data:
+            results = {
+                "xi_list": np.array(data["xi_list"]),
+                "min_dist": np.array(data["min_dist"]),
+                "closest_sol": np.array(data["closest_sol"]),
+            }
+        if save_results:
+            results["save_path"] = str(output_path)
+
+        timing_path = output_path.parent / "timing.npz"
+        if timing_path.exists():
+            with np.load(timing_path) as t:
+                results["timing"] = {
+                    "model_load_wall_s": float(t["model_load_wall_s"]),
+                    "model_load_compile_s": float(t["model_load_compile_s"]),
+                    "instance_wall_s": np.array(t["instance_wall_s"]).astype(float),
+                    "instance_compile_s": np.array(t["instance_compile_s"]).astype(float),
+                    "n_threads": int(t["n_threads"]),
+                }
+
+        if save_detailed:
+            results["detailed_dir"] = str(output_path.parent / "hc_detailed")
+
+        return results
+
+
 def compute_robust_radius(
     experiment_path: Union[str, Path],
     xi_list: Union[List[List[float]], np.ndarray],
@@ -97,118 +320,45 @@ def compute_robust_radius(
     output_filename: str = "robust_radius.npz",
     save_detailed: bool = False,
     num_threads: Union[int, str] = "auto",
+    timeout: Optional[float] = None,
 ) -> dict:
     """
-    Compute robust radius for a set of input points using Julia.
+    Compute the certified robust radius for a list of query points.
+
+    Executes Julia HomotopyContinuation in a fresh subprocess so callers can
+    safely invoke this after importing PyTorch or other native libraries.
 
     Args:
-        experiment_path: Path to experiment directory (e.g., "experiments/latest"
-                        or "experiments/run_20241202_143022")
-        xi_list: List of input points, each point is a list/array of coordinates.
-                 Can be a list of lists or a numpy array of shape (n_points, dim)
-        verbose: If True, print detailed progress information
-        save_results: If True, save results to NPZ file in experiment's analysis folder
-        output_filename: Name of output file (default: "robust_radius.npz")
-        save_detailed: If True, save detailed HC solutions for each point and boundary
-                      Results saved to analysis/hc_detailed/point_XXX.npz
-        num_threads: Number of Julia threads for parallel path tracking.
-                     "auto" (default) uses all available cores.
-                     Can also be an integer for a specific thread count.
+        experiment_path: Directory containing ``model/model_config.json`` and
+                         ``model/model_weights.h5`` (typically produced by
+                         ``src.utils.save_model``).
+        xi_list: Query points; list-of-lists or numpy array of shape
+                 ``(n_points, input_dim)``.
+        verbose: Stream Julia-side per-point progress.
+        save_results: If True (default), persist the NPZ output under
+                      ``experiment_path/analysis/<output_filename>``.
+                      If False, results live only in the returned dict.
+        output_filename: Output NPZ filename when ``save_results=True``.
+        save_detailed: Also persist the full HC solution set per point under
+                       ``analysis/hc_detailed/``. Requires ``save_results=True``.
+        num_threads: Julia thread count for parallel path tracking. ``"auto"``
+                     (default) uses all available cores.
+        timeout: Optional wall-clock seconds before the worker is killed.
 
     Returns:
-        Dictionary containing:
-            - 'xi_list': Input points as numpy array (n_points, dim)
-            - 'min_dist': Robust radii as numpy array (n_points,)
-            - 'closest_sol': Closest boundary points as numpy array (n_points, dim)
-            - 'save_path': Path where results were saved (if save_results=True)
-            - 'detailed_dir': Path to detailed results dir (if save_detailed=True)
-
-    Example:
-        >>> from src.hc.hc import compute_robust_radius
-        >>> xi_list = [[0.5, 0.5], [1.0, 0.0], [1.0, 1.0]]
-        >>> results = compute_robust_radius("experiments/latest", xi_list,
-        ...                                  verbose=True, save_detailed=True)
-        >>> print(f"Robust radii: {results['min_dist']}")
+        Dict with keys ``xi_list``, ``min_dist``, ``closest_sol``, plus
+        ``timing`` and ``save_path``/``detailed_dir`` when applicable.
     """
-    # Initialize Julia
-    jl = _initialize_julia(num_threads=num_threads)
-
-    # Get the project root (parent of parent of this file)
-    project_root = Path(__file__).parent.parent.parent
-
-    # Convert experiment_path to Path and resolve
-    exp_path = Path(experiment_path).resolve()
-    if not exp_path.exists():
-        raise FileNotFoundError(
-            f"Experiment path not found: {exp_path.relative_to(project_root)}"
-        )
-
-    # Convert xi_list to numpy array if needed
-    # juliacall automatically converts numpy arrays to Julia arrays
-    if not isinstance(xi_list, np.ndarray):
-        xi_list = np.array(xi_list)
-
-    # Ensure it's a 2D array
-    if xi_list.ndim == 1:
-        xi_list = xi_list.reshape(1, -1)
-
-    # Determine save path
-    save_path = None
-    if save_results:
-        analysis_dir = exp_path / "analysis"
-        analysis_dir.mkdir(exist_ok=True)
-        save_path = str(analysis_dir / output_filename)
-
-    # Call Julia function
-    print(f"\nCalling Julia robust_radius function...")
-    print(f"Experiment: {exp_path.relative_to(project_root)}")
-    print(f"Number of points: {len(xi_list)}")
-
-    # Pass numpy array directly - Julia will dispatch to the matrix overload
-    # and handle conversion to Vector{Vector{Float64}} internally
-    # Use module-qualified name to avoid ambiguity
-    jl.seval("EuclideanHC.robust_radius")(
-        str(exp_path),
-        xi_list,
+    return _run_compute_robust_radius_subprocess(
+        experiment_path=experiment_path,
+        xi_list=xi_list,
         verbose=verbose,
-        save_path=save_path,
+        save_results=save_results,
+        output_filename=output_filename,
         save_detailed=save_detailed,
+        num_threads=num_threads,
+        timeout=timeout,
     )
-
-    # Load and return results
-    if save_results:
-        data = np.load(save_path)
-        results = {
-            "xi_list": data["xi_list"],
-            "min_dist": data["min_dist"],
-            "closest_sol": data["closest_sol"],
-            "save_path": save_path,
-        }
-
-        # Load timing data
-        timing_path = analysis_dir / "timing.npz"
-        if timing_path.exists():
-            timing_data = np.load(timing_path)
-            results["timing"] = {
-                "model_load_wall_s": float(timing_data["model_load_wall_s"]),
-                "model_load_compile_s": float(timing_data["model_load_compile_s"]),
-                "instance_wall_s": timing_data["instance_wall_s"].astype(float),
-                "instance_compile_s": timing_data["instance_compile_s"].astype(float),
-                "n_threads": int(timing_data["n_threads"]),
-            }
-
-        # Add detailed results directory path if detailed saving was requested
-        if save_detailed:
-            detailed_dir = exp_path / "analysis" / "hc_detailed"
-            results["detailed_dir"] = str(detailed_dir)
-            print(
-                f"Detailed results saved to: {detailed_dir.relative_to(project_root)}"
-            )
-
-        return results
-    else:
-        print("\nWarning: Results not saved. Set save_results=True to save.")
-        return {}
 
 
 def load_robust_radius_results(
@@ -225,7 +375,7 @@ def load_robust_radius_results(
         Dictionary containing the results
 
     Example:
-        >>> from src.hc.julia_interface import load_robust_radius_results
+        >>> from src.hc import load_robust_radius_results
         >>> results = load_robust_radius_results("experiments/latest")
         >>> print(f"Robust radii: {results['min_dist']}")
     """
@@ -233,7 +383,7 @@ def load_robust_radius_results(
     results_path = exp_path / "analysis" / filename
 
     if not results_path.exists():
-        raise FileNotFoundError(f"Results file not found: {_relpath(results_path)}")
+        raise FileNotFoundError(f"Results file not found: {_display_path(results_path)}")
 
     data = np.load(results_path)
     return {
@@ -255,7 +405,7 @@ def verify_experiment(experiment_path: Union[str, Path]) -> dict:
         Dictionary with verification status
 
     Example:
-        >>> from src.hc.julia_interface import verify_experiment
+        >>> from src.hc import verify_experiment
         >>> status = verify_experiment("experiments/latest")
         >>> print(f"Valid: {status['valid']}")
     """
@@ -277,8 +427,8 @@ def verify_experiment(experiment_path: Union[str, Path]) -> dict:
 
     status = {
         "valid": True,
-        "path": _relpath(exp_path),
-        "resolved_path": _relpath(resolved_path),
+        "path": _display_path(exp_path),
+        "resolved_path": _display_path(resolved_path),
         "is_symlink": is_symlink,
         "model_dir_exists": model_dir.exists(),
         "config_exists": config_file.exists(),
@@ -291,7 +441,7 @@ def verify_experiment(experiment_path: Union[str, Path]) -> dict:
     if not resolved_path.exists():
         status["valid"] = False
         status["errors"].append(
-            f"Experiment path does not exist: {_relpath(resolved_path)}"
+            f"Experiment path does not exist: {_display_path(resolved_path)}"
         )
 
     if not model_dir.exists():
@@ -309,6 +459,30 @@ def verify_experiment(experiment_path: Union[str, Path]) -> dict:
     return status
 
 
+def _parse_worker_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Julia HC worker (internal)")
+    parser.add_argument("--worker", action="store_true")
+    parser.add_argument("--experiment-path", required=True)
+    parser.add_argument("--xi-path", required=True)
+    parser.add_argument("--output-path", required=True,
+                        help="Full path where the worker writes the NPZ result.")
+    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--save-detailed", action="store_true")
+    parser.add_argument("--num-threads", default="auto")
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    _initialize_julia()
-    print("Module hc.py loaded successfully.")
+    args = _parse_worker_args()
+    if not args.worker:
+        raise SystemExit("This module is intended to be launched with --worker.")
+
+    xi_list = np.load(args.xi_path)
+    _compute_robust_radius_inprocess(
+        experiment_path=args.experiment_path,
+        xi_list=xi_list,
+        output_path=args.output_path,
+        verbose=args.verbose,
+        save_detailed=args.save_detailed,
+        num_threads=args.num_threads,
+    )
