@@ -70,7 +70,17 @@ def _initialize_julia(num_threads: Union[int, str] = "auto"):
         if project_toml.exists():
             print(f"Activating Julia project environment...")
             jl.seval(f'using Pkg; Pkg.activate("{project_root}")')
-            print("Julia project activated.")
+            # Activating alone does NOT install missing dependencies. On a fresh
+            # clone (or any machine whose depot hasn't already resolved this
+            # project) loading the module then fails with e.g.
+            #   "Package OpenSSL_jll [...] is required but does not seem to be
+            #    installed" -- a transitive binary JLL pulled in via HDF5.
+            # Pkg.instantiate() resolves the project and installs whatever the
+            # juliacall runtime depot is missing. It is a fast no-op once the
+            # environment is already satisfied, so it is safe to run every init.
+            print("Instantiating Julia project (installs any missing deps)...")
+            jl.seval("Pkg.instantiate()")
+            print("Julia project activated and instantiated.")
         else:
             print("Warning: No Project.toml found. Using default Julia environment.")
 
